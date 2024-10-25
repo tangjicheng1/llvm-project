@@ -210,11 +210,11 @@ static bool needsPlt(RelExpr expr) {
 }
 
 bool lld::elf::needsGot(RelExpr expr) {
-  return oneof<R_GOT, R_AARCH64_AUTH_GOT, R_GOT_OFF, R_MIPS_GOT_LOCAL_PAGE,
-               R_MIPS_GOT_OFF, R_MIPS_GOT_OFF32, R_AARCH64_GOT_PAGE_PC,
-               R_AARCH64_AUTH_GOT_PAGE_PC, R_GOT_PC, R_GOTPLT,
-               R_AARCH64_GOT_PAGE, R_LOONGARCH_GOT, R_LOONGARCH_GOT_PAGE_PC>(
-      expr);
+  return oneof<R_GOT, R_AARCH64_AUTH_GOT, R_AARCH64_AUTH_GOT_PC, R_GOT_OFF,
+               R_MIPS_GOT_LOCAL_PAGE, R_MIPS_GOT_OFF, R_MIPS_GOT_OFF32,
+               R_AARCH64_GOT_PAGE_PC, R_AARCH64_AUTH_GOT_PAGE_PC, R_GOT_PC,
+               R_GOTPLT, R_AARCH64_GOT_PAGE, R_LOONGARCH_GOT,
+               R_LOONGARCH_GOT_PAGE_PC>(expr);
 }
 
 // True if this expression is of the form Sym - X, where X is a position in the
@@ -1011,8 +1011,8 @@ bool RelocationScanner::isStaticLinkTimeConstant(RelExpr e, RelType type,
             R_GOTONLY_PC, R_GOTPLTONLY_PC, R_PLT_PC, R_PLT_GOTREL, R_PLT_GOTPLT,
             R_GOTPLT_GOTREL, R_GOTPLT_PC, R_PPC32_PLTREL, R_PPC64_CALL_PLT,
             R_PPC64_RELAX_TOC, R_RISCV_ADD, R_AARCH64_GOT_PAGE,
-            R_AARCH64_AUTH_GOT, R_LOONGARCH_PLT_PAGE_PC, R_LOONGARCH_GOT,
-            R_LOONGARCH_GOT_PAGE_PC>(e))
+            R_AARCH64_AUTH_GOT, R_AARCH64_AUTH_GOT_PC, R_LOONGARCH_PLT_PAGE_PC,
+            R_LOONGARCH_GOT, R_LOONGARCH_GOT_PAGE_PC>(e))
     return true;
 
   // These never do, except if the entire file is position dependent or if
@@ -1126,7 +1126,8 @@ void RelocationScanner::processAux(RelExpr expr, RelType type, uint64_t offset,
       // Many LoongArch TLS relocs reuse the R_LOONGARCH_GOT type, in which
       // case the NEEDS_GOT flag shouldn't get set.
       bool needsGotAuth =
-          (expr == R_AARCH64_AUTH_GOT || expr == R_AARCH64_AUTH_GOT_PAGE_PC);
+          (expr == R_AARCH64_AUTH_GOT || expr == R_AARCH64_AUTH_GOT_PC ||
+           expr == R_AARCH64_AUTH_GOT_PAGE_PC);
       uint16_t flags = sym.flags.load(std::memory_order_relaxed);
       if (!(flags & NEEDS_GOT)) {
         sym.setFlags(needsGotAuth ? (NEEDS_GOT | NEEDS_GOT_AUTH) : NEEDS_GOT);
