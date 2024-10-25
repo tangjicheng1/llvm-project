@@ -92,6 +92,10 @@ enum RelExpr {
   R_AARCH64_PAGE_PC,
   R_AARCH64_RELAX_TLS_GD_TO_IE_PAGE_PC,
   R_AARCH64_TLSDESC_PAGE,
+  R_AARCH64_AUTH_TLSDESC_PAGE,
+  // TODO: maybe it's better to rename this expression
+  // to avoid name conflict with dynamic reloc
+  R_AARCH64_AUTH_TLSDESC,
   R_AARCH64_AUTH,
   R_ARM_PCA,
   R_ARM_SBREL,
