@@ -53,6 +53,7 @@
 #include "llvm/CodeGen/PHIElimination.h"
 #include "llvm/CodeGen/PreISelIntrinsicLowering.h"
 #include "llvm/CodeGen/RegAllocFast.h"
+#include "llvm/CodeGen/RegisterUsageInfo.h"
 #include "llvm/CodeGen/ReplaceWithVeclib.h"
 #include "llvm/CodeGen/SafeStack.h"
 #include "llvm/CodeGen/SelectOptimize.h"
@@ -901,9 +902,10 @@ Error CodeGenPassBuilder<Derived, TargetMachineT>::addMachinePasses(
     addPass(LocalStackSlotAllocationPass());
   }
 
-  if (TM.Options.EnableIPRA)
+  if (TM.Options.EnableIPRA) {
+    addPass(RequireAnalysisPass<PhysicalRegisterUsageInfoAnalysis, Module>());
     addPass(RegUsageInfoPropagationPass());
-
+  }
   // Run pre-ra passes.
   derived().addPreRegAlloc(addPass);
 
