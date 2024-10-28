@@ -1677,7 +1677,9 @@ void ConversionPatternRewriter::replaceUsesOfBlockArgument(BlockArgument from,
                              << "'(" << from.getOwner()->getParentOp() << ")\n";
   });
   impl->appendRewrite<ReplaceBlockArgRewrite>(from.getOwner(), from);
-  impl->mapping.map(from, to);
+  SmallVector<Value, 1> mapped = impl->mapping.lookupOrDefault(from);
+  assert(mapped.size() == 1 && "replaceUsesOfBlockArgument is not supported for 1:N replacements");
+  impl->mapping.map(mapped.front(), to);
 }
 
 Value ConversionPatternRewriter::getRemappedValue(Value key) {
