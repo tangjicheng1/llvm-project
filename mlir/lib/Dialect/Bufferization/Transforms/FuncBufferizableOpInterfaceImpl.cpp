@@ -41,18 +41,13 @@ void FuncAnalysisState::startFunctionAnalysis(FuncOp funcOp) {
 #endif // NDEBUG
 }
 
-/// Return the unique ReturnOp that terminates `funcOp`.
-/// Return nullptr if there is no such unique ReturnOp.
-static func::ReturnOp getAssumedUniqueReturnOp(FuncOp funcOp) {
-  func::ReturnOp returnOp;
-  for (Block &b : funcOp.getBody()) {
-    if (auto candidateOp = dyn_cast<func::ReturnOp>(b.getTerminator())) {
-      if (returnOp)
-        return nullptr;
-      returnOp = candidateOp;
-    }
-  }
-  return returnOp;
+/// Return all top-level func.return ops in the given function.
+static SmallVector<func::ReturnOp> getReturnOps(FuncOp funcOp) {
+  SmallVector<func::ReturnOp> result;
+  for (Block &b : funcOp.getBody())
+    if (auto returnOp = dyn_cast<func::ReturnOp>(b.getTerminator()))
+      result.push_back(returnOp);
+  return result;
 }
 
 /// Return the index-th bufferized function argument type. This assumes that the
@@ -372,15 +367,6 @@ struct FuncOpInterface
         getBufferType(op, value, options, invocationStack);
   }
 
-  LogicalResult verifyAnalysis(Operation *op,
-                               const AnalysisState &state) const {
-    auto funcOp = cast<func::FuncOp>(op);
-    // TODO: func.func with multiple returns are not supported.
-    if (!getAssumedUniqueReturnOp(funcOp) && !funcOp.isExternal())
-      return op->emitOpError("op without unique func.return is not supported");
-    return success();
-  }
-
   /// Rewrite function bbArgs and return values into buffer form. This function
   /// bufferizes the function signature and the ReturnOp. When the entire
   /// function body has been bufferized, function return types can be switched
@@ -427,40 +413,37 @@ struct FuncOpInterface
       return success();
     }
 
-    // TODO: Support functions with multiple returns.
-    func::ReturnOp returnOp = getAssumedUniqueReturnOp(funcOp);
-    assert(returnOp && "expected func with single return op");
-    assert(returnOp->getNumOperands() == retTypes.size() &&
-           "incorrect number of return values");
-    Location loc = returnOp.getLoc();
-
     // 1. Bufferize every block.
     for (Block &block : funcOp.getBody())
       if (failed(bufferization::bufferizeBlockSignature(&block, rewriter,
                                                         options)))
         return failure();
 
-    // 2. Bufferize all operands of the return op.
-    SmallVector<Value> returnValues;
-    for (auto [returnVal, bufferizedType] :
-         llvm::zip_equal(returnOp->getOperands(), retTypes)) {
-      auto tensorType = dyn_cast<TensorType>(returnVal.getType());
-      rewriter.setInsertionPoint(returnOp);
+    // 2. Bufferize the operands of the all return op.
+    for (func::ReturnOp returnOp : getReturnOps(funcOp)) {
+      assert(returnOp->getNumOperands() == retTypes.size() &&
+             "incorrect number of return values");
+      SmallVector<Value> returnValues;
+      for (auto [returnVal, bufferizedType] :
+           llvm::zip_equal(returnOp->getOperands(), retTypes)) {
+        auto tensorType = dyn_cast<TensorType>(returnVal.getType());
+        rewriter.setInsertionPoint(returnOp);
 
-      // If not a tensor type just forward it.
-      if (!tensorType) {
-        returnValues.push_back(returnVal);
-        continue;
+        // If not a tensor type just forward it.
+        if (!tensorType) {
+          returnValues.push_back(returnVal);
+          continue;
+        }
+
+        // Note: If `inferFunctionResultLayout = true`, casts are later folded
+        // away.
+        Value toMemrefOp = rewriter.create<bufferization::ToMemrefOp>(
+            returnOp.getLoc(), bufferizedType, returnVal);
+        returnValues.push_back(toMemrefOp);
       }
 
-      // Note: If `inferFunctionResultLayout = true`, casts are later folded
-      // away.
-      Value toMemrefOp = rewriter.create<bufferization::ToMemrefOp>(
-          loc, bufferizedType, returnVal);
-      returnValues.push_back(toMemrefOp);
+      returnOp.getOperandsMutable().assign(returnValues);
     }
-
-    returnOp.getOperandsMutable().assign(returnValues);
 
     // 3. Set the new function type.
     funcOp.setType(newFuncType);
