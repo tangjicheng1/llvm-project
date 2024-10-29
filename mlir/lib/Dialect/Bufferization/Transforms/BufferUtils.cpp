@@ -11,6 +11,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/Bufferization/Transforms/BufferUtils.h"
+
+#include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/MemRef/Utils/MemRefUtils.h"
@@ -138,8 +140,8 @@ bufferization::getGlobalFor(arith::ConstantOp constantOp, uint64_t alignment,
       alignment > 0 ? IntegerAttr::get(globalBuilder.getI64Type(), alignment)
                     : IntegerAttr();
 
-  BufferizeTypeConverter typeConverter;
-  auto memrefType = cast<MemRefType>(typeConverter.convertType(type));
+  auto memrefType =
+      cast<MemRefType>(getMemRefTypeWithStaticIdentityLayout(type));
   if (memorySpace)
     memrefType = MemRefType::Builder(memrefType).setMemorySpace(memorySpace);
   auto global = globalBuilder.create<memref::GlobalOp>(
