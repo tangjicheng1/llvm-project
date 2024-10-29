@@ -1277,6 +1277,11 @@ LogicalResult ConversionPatternRewriterImpl::remapValues(
     }
 
     // Try to find a mapped value with the desired type.
+    if (legalTypes.empty()) {
+      remapped.push_back({});
+      continue;
+    }
+
     SmallVector<Value, 1> mat = mapping.lookupOrDefault(operand, legalTypes);
     if (!mat.empty()) {
       // Mapped value has the correct type or there is an existing
@@ -2577,45 +2582,40 @@ legalizeUnresolvedMaterialization(RewriterBase &rewriter,
   assert(!op.use_empty() &&
          "expected that dead materializations have already been DCE'd");
   Operation::operand_range inputOperands = op.getOperands();
-  Type outputType = op.getResultTypes()[0];
 
   // Try to materialize the conversion.
   if (const TypeConverter *converter = rewrite->getConverter()) {
     rewriter.setInsertionPoint(op);
-    Value newMaterialization;
+    SmallVector<Value> newMaterialization;
     switch (rewrite->getMaterializationKind()) {
     case MaterializationKind::Argument:
-      // Try to materialize an argument conversion.
-      newMaterialization = converter->materializeArgumentConversion(
-          rewriter, op->getLoc(), outputType, inputOperands);
-      if (newMaterialization)
-        break;
-      // If an argument materialization failed, fallback to trying a target
-      // materialization.
-      [[fallthrough]];
+      llvm_unreachable("argument materializations have been removed");
     case MaterializationKind::Target:
       newMaterialization = converter->materializeTargetConversion(
-          rewriter, op->getLoc(), outputType, inputOperands,
+          rewriter, op->getLoc(), op.getResultTypes(), inputOperands,
           rewrite->getOriginalType());
       break;
     case MaterializationKind::Source:
-      newMaterialization = converter->materializeSourceConversion(
-          rewriter, op->getLoc(), outputType, inputOperands);
+      assert(op.getNumResults() == 1 && "*:N source materializations are not supported");
+      Value sourceMat = converter->materializeSourceConversion(
+          rewriter, op->getLoc(), op.getResultTypes().front(), inputOperands);
+      if (sourceMat)
+        newMaterialization.push_back(sourceMat);
       break;
     }
-    if (newMaterialization) {
-      assert(newMaterialization.getType() == outputType &&
+    if (!newMaterialization.empty()) {
+      assert(TypeRange(newMaterialization) == op.getResultTypes() &&
              "materialization callback produced value of incorrect type");
       rewriter.replaceOp(op, newMaterialization);
       return success();
     }
   }
 
-  InFlightDiagnostic diag =
-      op->emitError() << "failed to legalize unresolved materialization "
-                         "from ("
-                      << inputOperands.getTypes() << ") to (" << outputType
-                      << ") that remained live after conversion";
+  InFlightDiagnostic diag = op->emitError()
+                            << "failed to legalize unresolved materialization "
+                               "from ("
+                            << inputOperands.getTypes() << ") to (" << op.getResultTypes()
+                            << ") that remained live after conversion";
   diag.attachNote(op->getUsers().begin()->getLoc())
       << "see existing live user here: " << *op->getUsers().begin();
   return failure();
