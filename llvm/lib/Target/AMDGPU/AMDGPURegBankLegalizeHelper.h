@@ -90,6 +90,7 @@ private:
                               SmallSet<Register, 4> &SgprOperandRegs);
 
   LLT getTyFromID(RegBankLLTMapingApplyID ID);
+  LLT getBTyFromID(RegBankLLTMapingApplyID ID, LLT Ty);
 
   const RegisterBank *getRBFromID(RegBankLLTMapingApplyID ID);
 
@@ -101,6 +102,10 @@ private:
   applyMappingSrc(MachineInstr &MI, unsigned &OpIdx,
                   const SmallVectorImpl<RegBankLLTMapingApplyID> &MethodIDs,
                   SmallSet<Register, 4> &SgprWaterfallOperandRegs);
+
+  void splitLoad(MachineInstr &MI, ArrayRef<LLT> LLTBreakdown,
+                 LLT MergeTy = LLT());
+  void widenLoad(MachineInstr &MI, LLT WideTy, LLT MergeTy = LLT());
 
   void lower(MachineInstr &MI, const RegBankLLTMapping &Mapping,
              SmallSet<Register, 4> &SgprWaterfallOperandRegs);
