@@ -9,7 +9,11 @@
 #ifndef LLVM_LIB_TARGET_AMDGPU_AMDGPUGLOBALISELUTILS_H
 #define LLVM_LIB_TARGET_AMDGPU_AMDGPUGLOBALISELUTILS_H
 
+#include "AMDGPURegisterBankInfo.h"
+#include "MCTargetDesc/AMDGPUMCTargetDesc.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/CodeGen/GlobalISel/MIPatternMatch.h"
+#include "llvm/CodeGen/GlobalISel/MachineIRBuilder.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/Register.h"
 #include <utility>
@@ -48,7 +52,11 @@ private:
   // This will not be needed when we turn off LCSSA for global-isel.
   void findLCSSAPhi(Register Reg);
 };
-}
-}
+
+void buildReadAnyLane(MachineIRBuilder &B, Register SgprDst, Register VgprSrc,
+                      const RegisterBankInfo &RBI);
+
+} // namespace AMDGPU
+} // namespace llvm
 
 #endif

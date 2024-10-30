@@ -106,3 +106,59 @@ void IntrinsicLaneMaskAnalyzer::findLCSSAPhi(Register Reg) {
       S32S64LaneMask.insert(LCSSAPhi.getOperand(0).getReg());
   }
 }
+
+static LLT getReadAnyLaneSplitTy(LLT Ty) {
+  if (Ty.isVector()) {
+    LLT ElTy = Ty.getElementType();
+    if (ElTy == LLT::scalar(16))
+      return LLT::fixed_vector(2, 16);
+    // S32, S64 or pointer
+    return ElTy;
+  }
+
+  // Large scalars and 64-bit pointers
+  return LLT::scalar(32);
+}
+
+static Register buildReadAnyLane(MachineIRBuilder &B, Register VgprSrc,
+                                 const RegisterBankInfo &RBI);
+
+static void unmergeReadAnyLane(MachineIRBuilder &B,
+                               SmallVectorImpl<Register> &SgprDstParts,
+                               LLT UnmergeTy, Register VgprSrc,
+                               const RegisterBankInfo &RBI) {
+  const RegisterBank *VgprRB = &RBI.getRegBank(AMDGPU::VGPRRegBankID);
+  auto Unmerge = B.buildUnmerge({VgprRB, UnmergeTy}, VgprSrc);
+  for (unsigned i = 0; i < Unmerge->getNumOperands() - 1; ++i) {
+    SgprDstParts.push_back(buildReadAnyLane(B, Unmerge.getReg(i), RBI));
+  }
+}
+
+static Register buildReadAnyLane(MachineIRBuilder &B, Register VgprSrc,
+                                 const RegisterBankInfo &RBI) {
+  LLT Ty = B.getMRI()->getType(VgprSrc);
+  const RegisterBank *SgprRB = &RBI.getRegBank(AMDGPU::SGPRRegBankID);
+  if (Ty.getSizeInBits() == 32) {
+    return B.buildInstr(AMDGPU::G_READANYLANE, {{SgprRB, Ty}}, {VgprSrc})
+        .getReg(0);
+  }
+
+  SmallVector<Register, 8> SgprDstParts;
+  unmergeReadAnyLane(B, SgprDstParts, getReadAnyLaneSplitTy(Ty), VgprSrc, RBI);
+
+  return B.buildMergeLikeInstr({SgprRB, Ty}, SgprDstParts).getReg(0);
+}
+
+void AMDGPU::buildReadAnyLane(MachineIRBuilder &B, Register SgprDst,
+                              Register VgprSrc, const RegisterBankInfo &RBI) {
+  LLT Ty = B.getMRI()->getType(VgprSrc);
+  if (Ty.getSizeInBits() == 32) {
+    B.buildInstr(AMDGPU::G_READANYLANE, {SgprDst}, {VgprSrc});
+    return;
+  }
+
+  SmallVector<Register, 8> SgprDstParts;
+  unmergeReadAnyLane(B, SgprDstParts, getReadAnyLaneSplitTy(Ty), VgprSrc, RBI);
+
+  B.buildMergeLikeInstr(SgprDst, SgprDstParts).getReg(0);
+}
