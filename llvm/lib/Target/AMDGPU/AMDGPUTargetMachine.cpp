@@ -809,12 +809,16 @@ void AMDGPUTargetMachine::registerPassBuilderCallbacks(PassBuilder &PB) {
       });
 
   // FIXME: Why is AMDGPUAttributor not in CGSCC?
-  PB.registerOptimizerLastEPCallback(
-      [this](ModulePassManager &MPM, OptimizationLevel Level) {
-        if (Level != OptimizationLevel::O0) {
-          MPM.addPass(AMDGPUAttributorPass(*this));
-        }
-      });
+  PB.registerOptimizerLastEPCallback([this](ModulePassManager &MPM,
+                                            OptimizationLevel Level,
+                                            ThinOrFullLTOPhase Phase) {
+    if (Level != OptimizationLevel::O0) {
+      bool LTOPreLink = Phase == ThinOrFullLTOPhase::FullLTOPreLink ||
+                        Phase == ThinOrFullLTOPhase::ThinLTOPreLink;
+      if (!LTOPreLink)
+        MPM.addPass(AMDGPUAttributorPass(*this));
+    }
+  });
 
   PB.registerFullLinkTimeOptimizationLastEPCallback(
       [this](ModulePassManager &PM, OptimizationLevel Level) {
